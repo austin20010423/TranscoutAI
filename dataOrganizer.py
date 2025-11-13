@@ -20,3 +20,8 @@ class data_organizer:
         print(f"\n--- Ingestion Complete: Found {len(repos)} relevant repositories ---")
         
         return repos
+    
+    """
+    Add more data ingestion methods here as needed
+    
+    """
