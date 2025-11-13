@@ -65,7 +65,7 @@ NEO4J_USER
 NEO4J_PASSWORD
 OPENAI_API_KEY 
 OPENAI_MODEL (Recommend to use OPENAI rather then Ollama)
-E5_MODEL_NAME (E% from huggingface)
+E5_MODEL_NAME (E5 from huggingface)
 ```
 
 ### 3. Run Pipeline
