@@ -1,6 +1,6 @@
 # TrendScout AI
 
-A data pipeline that ingests data from RSS feeds and GitHub, normalizes it with an LLM, computes embeddings, and stores metadata in Neo4j.
+Conversational Market Intelligence for AI Startups 
 
 ## Project Structure
 
@@ -8,9 +8,13 @@ A data pipeline that ingests data from RSS feeds and GitHub, normalizes it with 
 |------|---------|
 | `metadataToNeo4j.py` | Main pipeline: data loading, LLM normalization, embedding computation, Neo4j ingestion |
 | `dataOrganizer.py` | Helper to coordinate data ingestion |
-| `Data_Scraping/data_RSS.py` | RSS feed ingestion |
-| `Data_Scraping/data_github.py` | GitHub API data collection |
+| `Data_Scraping/` | Put custom Data Scraping module 
 | `config.py` | Configuration (use environment variables for secrets) |
+
+## Build Data Pipeline
+- Put data scraping module in Data_Scraping file 
+- Convert data into python dictionary in dataOrganizer.py
+- Combine data using load_data function in metadataToNeo4j.py
 
 ## Neo4j Database Setup
 Go to [Neo4j Aura](https://neo4j.com/product/auradb/) and create an instance. Copy the password and database URL (found in the instance dropdown at top left).
