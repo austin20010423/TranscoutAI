@@ -1,4 +1,5 @@
 from Data_Scraping import data_RSS, data_github
+import json
 
 
 class data_organizer:
@@ -21,6 +22,12 @@ class data_organizer:
         
         return repos
     
+
+    def data_orginize_startupsavant():
+        with open("neo4j_full_hierarchy.json", "r", encoding="utf-8") as f:
+            data = json.load(f)[189:210]
+
+        return data
     """
     Add more data ingestion methods here as needed
     

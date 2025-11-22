@@ -5,15 +5,15 @@ ORDER = "desc"
 
 
 # --- NEO4j CONFIG ---
-NEO4J_URI = "database URL from neo4j aura"
+NEO4J_URI = "url"
 NEO4J_USER = "neo4j"
-NEO4J_PASSWORD = "neo4j database password"
+NEO4J_PASSWORD = "password"
 
 
 # --- OPENAI  AND EMBEDDING MODEL CONFIG ---
 OPEN_MODEL = "gemma3:270m"
 E5_MODEL_NAME = "intfloat/e5-base-v2"
-OPENAI_API_KEY = "your openai api key"
+OPENAI_API_KEY = "api key"
 
 # LLM backend selection: 'ollama' (default) or 'openai'.
 # You can override via environment variable LLM_BACKEND or set here.

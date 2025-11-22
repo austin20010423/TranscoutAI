@@ -77,9 +77,10 @@ def test_connection(driver):
 # -------------------------------
 def load_data():
     """Fetch diverse data from different sources."""
-    rss_articles = dataOrganizer.data_organizer.data_orginize_RSS()
+    # rss_articles = dataOrganizer.data_organizer.data_orginize_RSS()
     # github_repos = dataOrganizer.data_organizer.data_orginize_github()
-    return rss_articles  # later, merge multiple lists if needed
+    startupsavant_data = dataOrganizer.data_organizer.data_orginize_startupsavant()
+    return startupsavant_data  # later, merge multiple lists if needed
 
 
 # -------------------------------
@@ -95,7 +96,7 @@ class TicketSchema(BaseModel):
         default=None, description="Embedding vector for the title")
 
     type: Optional[str] = Field(default=None, description="Ticket type: data type from source")
-    metadata: Optional[Dict[str, str]] = Field(default=None, description="Metadata information of the ticket such as published, author_name, and feed_title")
+    metadata: Optional[Dict[str, str]] = Field(default=None, description="Metadata information of the ticket, it will contain published, author_name, and feed_title, and location")
     description: Optional[Dict[str, str]] = Field(default=None, description="Description details of the ticket")
     source: Optional[Dict[str, str]] = Field(default=None, description="Source information of the ticket")
     tags: Optional[List[str]] = Field(default=None, description="Key word associated with the ticket")
@@ -128,6 +129,7 @@ prompt = PromptTemplate(
         "6. If any input field is missing, set it explicitly to null.\n"
         "7. Always ensure the result is a valid JSON object, never an array or primitive value.\n\n"
         "You need to try your best to fill in all fields, all fields will only be simple text type except metadata.\n\n"
+        "And please follow the ingestion query, maintain the schema and the field names exactly as specified.\n\n"
         "Now normalize the following input into a Ticket record:\n{input_json}"
     ),
     input_variables=["input_json"],
@@ -145,6 +147,7 @@ def normalize_ticket(raw_obj):
         raw_obj["ticket_id"] = str(uuid.uuid4())
     
     input_json = json.dumps(raw_obj, ensure_ascii=False)
+    
     try:
         # RunnableSequence returns the parsed output directly
         result = normalize_chain.invoke({"input_json": input_json})
@@ -204,45 +207,47 @@ def ingest_to_neo4j(tickets: List[TicketSchema]):
 
     // Root Ticket Node
     MERGE (root:Entity {ticket_id: row.ticket_id})
-      SET root.title = row.title,
-          root.type = coalesce(row.type, 'ticket'),
-          root.title_embedding = row.title_embedding
+    SET root.title = row.title,
+        root.type = coalesce(row.type, 'ticket'),
+        root.title_embedding = row.title_embedding
 
     // Metadata Node
     WITH root, row
     FOREACH (_ IN CASE WHEN row.metadata IS NOT NULL THEN [1] ELSE [] END |
-      MERGE (meta:Entity {parent_id: row.ticket_id, type:'metadata'})
-        SET meta.published = row.metadata.published
-      MERGE (root)-[:HAS_METADATA]->(meta)
+    MERGE (meta:Entity {parent_id: row.ticket_id, type:'metadata'})
+        SET meta.published   = coalesce(row.metadata.published, ''),
+            meta.author_name = coalesce(row.metadata.author_name, ''),
+            meta.feed_title  = coalesce(row.metadata.feed_title, ''),
+            meta.location    = coalesce(row.metadata.location, '')
+    MERGE (root)-[:HAS_METADATA]->(meta)
 
-      // Attach Type Node under Metadata
-      MERGE (typeNode:Entity {parent_id: row.ticket_id, type:'type'})
+    // Type Node under Metadata
+    MERGE (typeNode:Entity {parent_id: row.ticket_id, type:'type'})
         SET typeNode.name = coalesce(row.type, 'N/A')
-      MERGE (meta)-[:HAS_TYPE]->(typeNode)
+    MERGE (meta)-[:HAS_TYPE]->(typeNode)
     )
 
-    // Content Node (from description.summary)
+    // Description (Content) Node — match `description.description`
     WITH root, row
     FOREACH (_ IN CASE WHEN row.description IS NOT NULL THEN [1] ELSE [] END |
-      MERGE (content:Entity {parent_id: row.ticket_id, type:'content'})
-        SET content.text = row.description.summary
-      MERGE (root)-[:HAS_CONTENT]->(content)
+    MERGE (content:Entity {parent_id: row.ticket_id, type:'content'})
+        SET content.text = coalesce(row.description.description, '')
+    MERGE (root)-[:HAS_CONTENT]->(content)
     )
 
-    // Source Node (with link + source_url)
+    // Source Node — match `source.source`
     WITH root, row
     FOREACH (_ IN CASE WHEN row.source IS NOT NULL THEN [1] ELSE [] END |
-      MERGE (source:Entity {parent_id: row.ticket_id, type:'source'})
-        SET source.link = row.source.link,
-            source.source_url = row.source.source_url
-      MERGE (root)-[:HAS_SOURCE]->(source)
+    MERGE (source:Entity {parent_id: row.ticket_id, type:'source'})
+        SET source.name = coalesce(row.source.source, '')
+    MERGE (root)-[:HAS_SOURCE]->(source)
     )
 
-    // Tag Nodes
+    // Tags
     WITH root, row
     FOREACH (tagName IN coalesce(row.tags, []) |
-      MERGE (tag:Entity {parent_id: row.ticket_id, type:'tag', name: tagName})
-      MERGE (root)-[:HAS_TAG]->(tag)
+    MERGE (tag:Entity {parent_id: row.ticket_id, type:'tag', name: tagName})
+    MERGE (root)-[:HAS_TAG]->(tag)
     )
     """
 
@@ -254,26 +259,18 @@ def ingest_to_neo4j(tickets: List[TicketSchema]):
             "type": t.type,
             "title_embedding": getattr(t, "title_embedding", None),
 
-            # metadata sub-entity
-            "metadata": {
-                "published": t.metadata.get("published") if t.metadata else None,
-            } if t.metadata else None,
+            "metadata": t.metadata if t.metadata else None,
 
-            # description (for content)
             "description": {
-                "summary": t.description.get("summary") if t.description else None,
+                "description": t.description.get("description") if t.description else None
             } if getattr(t, "description", None) else None,
 
-            # source with both link and source_url
             "source": {
-                "link": t.source.get("link") if t.source else None,
-                "source_url": t.source.get("source_url") if t.source else None,
+                "source": t.source.get("source") if t.source else None
             } if t.source else None,
 
-            # tags list
             "tags": t.tags if t.tags else []
         })
-
     # Push to Neo4j
     start = time.time()
     with driver.session() as s:
@@ -330,5 +327,5 @@ if __name__ == "__main__":
     
 '''
     article = load_data()
-    normalize_ticket(article[0])
-    '''
+    normalize_ticket(article[1])
+''' 
