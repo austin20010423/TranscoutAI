@@ -71,16 +71,16 @@ def test_connection(driver):
     except Exception as e:
         print("❌ Connection failed:", e)
 
-
+    
 # -------------------------------
 # Load data
 # -------------------------------
 def load_data():
     """Fetch diverse data from different sources."""
-    # rss_articles = dataOrganizer.data_organizer.data_orginize_RSS()
+    rss_articles = dataOrganizer.data_organizer.data_orginize_RSS()
     # github_repos = dataOrganizer.data_organizer.data_orginize_github()
-    startupsavant_data = dataOrganizer.data_organizer.data_orginize_startupsavant()
-    return startupsavant_data  # later, merge multiple lists if needed
+    # startupsavant_data = dataOrganizer.data_organizer.data_orginize_startupsavant()
+    return rss_articles  # later, merge multiple lists if needed
 
 
 # -------------------------------
@@ -151,6 +151,7 @@ def normalize_ticket(raw_obj):
     try:
         # RunnableSequence returns the parsed output directly
         result = normalize_chain.invoke({"input_json": input_json})
+        print(f"Result: {result}")
         
         # result is already parsed by the parser
         parsed_ticket = result
@@ -206,7 +207,7 @@ def ingest_to_neo4j(tickets: List[TicketSchema]):
     UNWIND $rows AS row
 
     // Root Ticket Node
-    MERGE (root:Entity {ticket_id: row.ticket_id})
+    MERGE (root:Ticket {ticket_id: row.ticket_id})
     SET root.title = row.title,
         root.type = coalesce(row.type, 'ticket'),
         root.title_embedding = row.title_embedding
@@ -321,11 +322,11 @@ def ingest_pipeline():
 
 
 if __name__ == "__main__":
-    
-    test_connection(driver)
-    ingest_pipeline()
-    
-'''
+
+
+    # test_connection(driver)
+    # ingest_pipeline()
+
+
     article = load_data()
-    normalize_ticket(article[1])
-''' 
+    normalize_ticket(article[0])

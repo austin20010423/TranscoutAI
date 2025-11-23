@@ -30,31 +30,35 @@ driver = GraphDatabase.driver(config.NEO4J_URI, auth=(config.NEO4J_USER, config.
 client = OpenAI(api_key=config.OPENAI_API_KEY)
 
 
-def extract_entities_with_gpt4(user_query: str) -> Tuple[List[str], str]:
-    """Use OpenAI API to extract tags and summary."""
+def extract_entities_with_gpt4(user_query: str) -> Tuple[List[str], List[str], List[str], str]:
+    """Use OpenAI API to extract tags, locations, sources, and summary."""
     prompt = f"""
     You are an AI that extracts structured entities from a natural language query.
 
     Your task:
     - Identify key **tags** (short keywords/topics such as ["AI", "bug", "TechCrunch"])
+    - Identify **locations** (cities, countries, regions like ["New York", "Texas", "USA"])
+    - Identify **sources** (specific data sources if mentioned, e.g., ["TechCrunch", "GitHub"])
     - Produce a **summary** (1–2 sentences capturing what the user wants)
 
     Return JSON only, with this structure:
     {{
     "tags": [string],
+    "locations": [string],
+    "sources": [string],
     "summary": string
     }}
 
     Examples:
     ---
-    Query: "Show me recent AI-related TechCrunch tickets"
-    Output: {{ "tags": ["AI", "TechCrunch"], "summary": "User wants recent TechCrunch tickets about AI." }}
+    Query: "Show me recent AI-related TechCrunch tickets in New York"
+    Output: {{ "tags": ["AI"], "locations": ["New York"], "sources": ["TechCrunch"], "summary": "User wants recent TechCrunch tickets about AI in New York." }}
     ---
     Query: "Find bug reports mentioning payment errors"
-    Output: {{ "tags": ["bug", "payment"], "summary": "User wants tickets about payment-related bugs." }}
+    Output: {{ "tags": ["bug", "payment"], "locations": [], "sources": [], "summary": "User wants tickets about payment-related bugs." }}
     ---
-    Query: "Tickets about UX improvements and AI suggestions"
-    Output: {{ "tags": ["UX", "AI"], "summary": "User asks for tickets discussing UX and AI improvements." }}
+    Query: "Startup companies in Texas from GitHub"
+    Output: {{ "tags": ["Startup"], "locations": ["Texas"], "sources": ["GitHub"], "summary": "User asks for startup companies in Texas found on GitHub." }}
     ---
 
     Now analyze this query:
@@ -72,11 +76,13 @@ def extract_entities_with_gpt4(user_query: str) -> Tuple[List[str], str]:
         data = json.loads(content)
     except Exception as e:
         print("⚠️ GPT extraction failed:", e)
-        data = {"tags": [], "summary": user_query}
+        data = {"tags": [], "locations": [], "sources": [], "summary": user_query}
 
     tags = data.get("tags", [])
+    locations = data.get("locations", [])
+    sources = data.get("sources", [])
     summary = data.get("summary", user_query)
-    return tags, summary
+    return tags, locations, sources, summary
 
 
 # ---------------------------------------------------------------------
@@ -86,42 +92,102 @@ def semantic_search_with_tag_filter_in_neo4j(
     tx,
     query_vector: List[float],
     tags: List[str],
+    locations: List[str],
+    sources: List[str],
     semantic_limit: int = 200,
     top_k: int = 10
 ):
     """
-    Perform semantic similarity search + tag filtering inside Neo4j.
-    If tags are provided, only tickets that have at least one of those tags are kept.
+    Perform hybrid search:
+    1. If filters (tags, locations, sources) are present -> Try Filtered Exact Search (KNN).
+    2. If Filtered Search returns NO results -> Fallback to Vector Index (ANN).
+    3. If NO filters -> Use Vector Index (ANN).
     """
-    cypher = """
-    WITH $qv AS qv, $tags AS tags
-    MATCH (t:Entity {type:'ticket'})
-    WHERE t.title_embedding IS NOT NULL
-    OPTIONAL MATCH (t)-[:HAS_TAG]->(tag:Entity)
-    WITH t, qv, tags, collect(DISTINCT tag.name) AS tag_names,
-        vector.similarity.cosine(qv, t.title_embedding) AS sim
-    WHERE size(tags) = 0 OR any(tag IN tag_names WHERE toLower(tag) IN [tagName IN tags | toLower(tagName)])
-    WITH t, sim, tag_names
-    ORDER BY sim DESC
-    LIMIT $top_k
-
-    // Get full ticket context
-    OPTIONAL MATCH (t)-[r]->(n:Entity)
-    WITH t, sim, tag_names, collect({rel: type(r), node: n}) AS related
-    RETURN
-    t.ticket_id AS ticket_id,
-    t.title AS title,
-    t.type AS type,
-    tag_names AS tags,
-    sim,
-    [x IN related | {
-        relationship: x.rel,
-        node_type: x.node.type,
-        node_props: properties(x.node)
-    }] AS relationships
+    
+    # Define queries
+    vector_index_cypher = """
+        CALL db.index.vector.queryNodes('ticket_title_embedding', $top_k, $qv)
+        YIELD node AS t, score AS sim
+        
+        // Get full ticket context
+        OPTIONAL MATCH (t)-[r]->(n:Entity)
+        WITH t, sim, collect({rel: type(r), node: n}) AS related
+        
+        // Extract tags for consistency in return format
+        OPTIONAL MATCH (t)-[:HAS_TAG]->(tag:Entity)
+        WITH t, sim, related, collect(tag.name) AS tags
+        
+        RETURN
+        t.ticket_id AS ticket_id,
+        t.title AS title,
+        t.type AS type,
+        tags,
+        sim,
+        [x IN related | {
+            relationship: x.rel,
+            node_type: x.node.type,
+            node_props: properties(x.node)
+        }] AS relationships
     """
 
-    return tx.run(cypher, qv=query_vector, tags=tags, top_k=top_k).data()
+    filtered_cypher = """
+        WITH $qv AS qv, $tags AS tags, $locations AS locations, $sources AS sources
+        MATCH (t:Entity {type:'ticket'})
+        WHERE t.title_embedding IS NOT NULL
+
+        // 1. Tag Filtering
+        OPTIONAL MATCH (t)-[:HAS_TAG]->(tag:Entity)
+        WITH t, qv, tags, locations, sources, collect(DISTINCT tag.name) AS tag_names
+        WHERE size(tags) = 0 OR any(tag IN tag_names WHERE toLower(tag) IN [tagName IN tags | toLower(tagName)])
+
+        // 2. Location Filtering (via Metadata)
+        OPTIONAL MATCH (t)-[:HAS_METADATA]->(meta:Entity)
+        WITH t, qv, tags, locations, sources, tag_names, meta
+        WHERE size(locations) = 0 OR (meta.location IS NOT NULL AND any(loc IN locations WHERE toLower(meta.location) CONTAINS toLower(loc)))
+
+        // 3. Source Filtering
+        OPTIONAL MATCH (t)-[:HAS_SOURCE]->(source:Entity)
+        WITH t, qv, tags, locations, sources, tag_names, meta, source
+        WHERE size(sources) = 0 OR (source.name IS NOT NULL AND any(src IN sources WHERE toLower(source.name) CONTAINS toLower(src)))
+
+        // 4. Similarity Calculation
+        WITH t, qv, tag_names,
+             vector.similarity.cosine(qv, t.title_embedding) AS sim
+        ORDER BY sim DESC
+        LIMIT $top_k
+
+        // Get full ticket context
+        OPTIONAL MATCH (t)-[r]->(n:Entity)
+        WITH t, sim, tag_names, collect({rel: type(r), node: n}) AS related
+        RETURN
+        t.ticket_id AS ticket_id,
+        t.title AS title,
+        t.type AS type,
+        tag_names AS tags,
+        sim,
+        [x IN related | {
+            relationship: x.rel,
+            node_type: x.node.type,
+            node_props: properties(x.node)
+        }] AS relationships
+    """
+
+    # Logic
+    has_filters = bool(tags or locations or sources)
+    results = []
+
+    if has_filters:
+        print("🔍 Using Filtered Exact Search (KNN)...")
+        results = tx.run(filtered_cypher, qv=query_vector, tags=tags, locations=locations, sources=sources, top_k=top_k).data()
+        
+        if not results:
+            print("⚠️ No results found with filters. Falling back to Vector Index (ANN)...")
+            results = tx.run(vector_index_cypher, qv=query_vector, top_k=top_k).data()
+    else:
+        print("⚡ Using Vector Index (ANN) for search...")
+        results = tx.run(vector_index_cypher, qv=query_vector, top_k=top_k).data()
+
+    return results
 
 
 # ---------------------------------------------------------------------
@@ -133,9 +199,11 @@ def text_query_to_results(user_query: str,
                           top_n: int = 5) -> Dict[str, Any]:
     print(f"\n💬 USER QUERY: {user_query}")
 
-    tags, summary = extract_entities_with_gpt4(user_query)
+    tags, locations, sources, summary = extract_entities_with_gpt4(user_query)
     print("🎯 Summary:", summary)
     print("🏷️ Tags:", tags)
+    print("📍 Locations:", locations)
+    print("📡 Sources:", sources)
 
     query_vector = embed_e5_query(summary)
 
@@ -144,12 +212,14 @@ def text_query_to_results(user_query: str,
             semantic_search_with_tag_filter_in_neo4j,
             query_vector,
             tags,
+            locations,
+            sources,
             semantic_limit,
             semantic_top_k
         )
 
     if not results:
-        return {"answer": "No matching tickets found.", "results": []}
+        return []
 
     top_results = results[:top_n]
 

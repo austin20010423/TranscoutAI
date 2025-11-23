@@ -25,7 +25,7 @@ class data_organizer:
 
     def data_orginize_startupsavant():
         with open("neo4j_full_hierarchy.json", "r", encoding="utf-8") as f:
-            data = json.load(f)[189:210]
+            data = json.load(f)[90:110]
 
         return data
     """
