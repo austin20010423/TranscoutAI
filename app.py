@@ -1,7 +1,6 @@
 import streamlit as st
 import llm_response
-import time
-import graphviz
+from datetime import datetime
 
 # ---------------------------------------------------------------------
 # Page Configuration & Custom CSS
@@ -13,39 +12,168 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# Custom CSS for a premium, modern tech look
+# Custom CSS matching the reference UI
 st.markdown("""
 <style>
-    /* Main background and text colors are handled by Streamlit's theme, 
-       but we can refine specific elements. */
-    
     .stApp {
-        background-color: #0E1117;
+        background-color: #000000;
     }
-    
-    /* Chat message containers */
-    .stChatMessage {
-        background-color: #262730;
-        border-radius: 10px;
-        padding: 10px;
-        margin-bottom: 10px;
-        border: 1px solid #41444C;
+
+    .main .block-container {
+        background-color: #000000;
+        padding-top: 2rem;
+        padding-bottom: 100px;
     }
-    
-    /* User message specific style (if needed, though Streamlit handles this well) */
-    
-    /* Sidebar styling */
+
     section[data-testid="stSidebar"] {
-        background-color: #1A1C24;
+        background-color: #1E1E1E;
     }
-    
-    /* Headers */
+
+    section[data-testid="stSidebar"] > div {
+        background-color: #1E1E1E;
+        min-height: 100vh;
+        position: relative;
+        padding: 24px 20px 120px 20px;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button {
+        background-color: transparent;
+        border: none;
+        color: #9CA3AF;
+        text-align: left;
+        padding: 10px 12px;
+        font-weight: 400;
+        box-shadow: none;
+    }
+
+    section[data-testid="stSidebar"] .stButton > button:hover {
+        background-color: #2A2A2A;
+        color: #FFFFFF;
+    }
+
+    #MainMenu {visibility: hidden;}
+    footer {visibility: hidden;}
+    header {visibility: hidden;}
+
+    .logo-container {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 20px;
+        padding: 10px 0;
+    }
+
+    .logo-text {
+        font-size: 1.5rem;
+        font-weight: 600;
+        color: #FFFFFF;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .sidebar-divider {
+        height: 1px;
+        width: 100%;
+        background: linear-gradient(90deg, rgba(255,255,255,0), rgba(107,114,128,0.4), rgba(255,255,255,0));
+        margin: 18px 0;
+    }
+
+    button[key="new_chat"] {
+        background-color: #DC2626 !important;
+        color: white !important;
+        border: none !important;
+        font-weight: 500 !important;
+        border-radius: 8px !important;
+        padding: 12px 16px !important;
+        text-align: center !important;
+    }
+
+    button[key="new_chat"]:hover {
+        background-color: #B91C1C !important;
+    }
+
+    .welcome-container {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        min-height: 60vh;
+        text-align: center;
+    }
+
+    .rocket-emoji {
+        font-size: 5rem;
+        margin-bottom: 20px;
+    }
+
+    .welcome-text {
+        color: #FFFFFF;
+        font-size: 1.5rem;
+        font-weight: 400;
+        margin-bottom: 40px;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+
+    .stButton > button {
+        background-color: #1F1F1F;
+        border: 1px solid #333333;
+        border-radius: 10px;
+        padding: 20px;
+        color: #FFFFFF;
+        font-size: 0.95rem;
+        font-weight: 400;
+        width: 100%;
+        text-align: left;
+        transition: all 0.2s;
+        box-shadow: none;
+    }
+
+    .stButton > button:hover {
+        background-color: #2A2A2A;
+        border-color: #444444;
+        transform: translateY(-2px);
+        box-shadow: 0 8px 24px rgba(0,0,0,0.25);
+    }
+
+    .stButton > button:focus-visible {
+        outline: 2px solid #8B5CF6;
+        outline-offset: 2px;
+    }
+
+    .stChatInputContainer {
+        position: fixed;
+        bottom: 20px;
+        left: 0;
+        right: 0;
+        padding: 0 20px;
+        background-color: #000000;
+    }
+
+    .stChatInput > div > div {
+        background: rgba(20, 20, 20, 0.75);
+        border: 1px solid rgba(255,255,255,0.08);
+        border-radius: 16px;
+        box-shadow: 0 25px 50px rgba(0,0,0,0.45);
+        backdrop-filter: blur(12px);
+    }
+
+    .stChatInput input {
+        color: #FFFFFF;
+    }
+
+    .stChatInput input::placeholder {
+        color: #6B7280;
+    }
+
+    .stChatMessage {
+        background-color: transparent;
+        padding: 10px 0;
+    }
+
     h1, h2, h3 {
-        font-family: 'Inter', sans-serif;
+        font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
         color: #FAFAFA;
     }
-    
-    /* Custom card for sources */
+
     .source-card {
         background-color: #1E212B;
         border: 1px solid #333;
@@ -54,20 +182,24 @@ st.markdown("""
         margin-bottom: 10px;
         transition: transform 0.2s;
     }
+
     .source-card:hover {
         transform: translateY(-2px);
         border-color: #4A90E2;
     }
+
     .source-title {
         font-weight: bold;
         color: #4A90E2;
         font-size: 1.1em;
     }
+
     .source-meta {
         font-size: 0.85em;
         color: #A0A0A0;
         margin-top: 5px;
     }
+
     .tag-badge {
         background-color: #333;
         color: #EEE;
@@ -81,105 +213,107 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------------------
-# Visualization Helper
+# Session State & Suggestions
 # ---------------------------------------------------------------------
-def visualize_sidebar(placeholder, sources):
-    with placeholder.container():
-        if not sources:
-            st.info("No data to visualize yet. Ask a question!")
-            return
+SUGGESTION_PROMPTS = [
+    {"icon": "🛰️", "text": "Which startups are building AI products in Texas?"},
+    {"icon": "🌉", "text": "Startups based in San Francisco, California"},
+    {"icon": "🎬", "text": "Startup related to content creation"},
+    {"icon": "🤖", "text": "Artificial Intelligence startups"},
+]
 
-        st.markdown("### 📊 Retrieval Analytics")
-        
-        # Knowledge Graph Visualization
-        st.markdown("**Knowledge Graph**")
-        try:
-            graph = graphviz.Digraph()
-            graph.attr(rankdir='LR', size='8,5', bgcolor='#1A1C24')
-            graph.attr('node', shape='box', style='filled', fillcolor='#262730', fontcolor='white', color='#41444C')
-            graph.attr('edge', color='#A0A0A0')
+if "messages" not in st.session_state:
+    st.session_state.messages = []
 
-            for i, s in enumerate(sources):
-                # Ticket Node
-                ticket_id = f"t_{i}"
-                label = s.get('title', 'Ticket')[:20] + "..."
-                graph.node(ticket_id, label=label, fillcolor='#4A90E2', fontcolor='white')
+if "chat_sessions" not in st.session_state:
+    st.session_state.chat_sessions = []
 
-                # Tags
-                for tag in s.get("tags", []):
-                    tag_id = f"tag_{tag}"
-                    graph.node(tag_id, label=tag, shape='ellipse', fillcolor='#333', fontsize='10')
-                    graph.edge(ticket_id, tag_id, label="HAS_TAG", fontsize='8')
+if "current_session_id" not in st.session_state:
+    st.session_state.current_session_id = None
 
-                # Relationships
-                for rel in s.get("relationships", []):
-                    target_name = rel['node_props'].get('name', 'Unknown')
-                    target_id = f"rel_{target_name}_{i}"
-                    graph.node(target_id, label=target_name, shape='ellipse', fillcolor='#333', fontsize='10')
-                    graph.edge(ticket_id, target_id, label=rel['relationship'], fontsize='8')
+if "pending_prompt" not in st.session_state:
+    st.session_state.pending_prompt = None
 
-            st.graphviz_chart(graph)
-        except Exception as e:
-            st.error(f"Graph viz failed: {e}")
 
+def render_suggestion_buttons(show_heading: bool = False, key_prefix: str = "main"):
+    """Display the quick-start suggestion buttons in a 2x2 grid."""
+    container = st.container()
+    if show_heading:
+        container.markdown("### Quick suggestions")
+    col1, col2 = container.columns(2, gap="large")
+    cols = [col1, col2]
+    for idx, suggestion in enumerate(SUGGESTION_PROMPTS):
+        with cols[idx % 2]:
+            if st.button(
+                f"{suggestion['icon']} {suggestion['text']}",
+                key=f"{key_prefix}_suggestion_{idx}",
+                use_container_width=True,
+            ):
+                st.session_state.pending_prompt = suggestion["text"]
+                st.rerun()
 
 # ---------------------------------------------------------------------
 # Sidebar
 # ---------------------------------------------------------------------
 with st.sidebar:
-    st.title("🚀 Transcout AI")
-    st.markdown("---")
-    
-    # Placeholder for visualization
-    viz_placeholder = st.empty()
-    
-    st.markdown("---")
-    st.markdown("### About")
-    st.info(
-        "Transcout AI uses Graph RAG to retrieve the latest tech information "
-        "and insights from a Neo4j knowledge graph."
-    )
-    
-    if st.button("Clear Chat History"):
+    st.markdown("""
+    <div class="logo-container">
+        <span style="font-size: 1.8rem;">🚀</span>
+        <span class="logo-text">Transcout AI</span>
+    </div>
+    """, unsafe_allow_html=True)
+    st.markdown("<div class='sidebar-divider'></div>", unsafe_allow_html=True)
+
+    if st.button("+ New chat", key="new_chat", use_container_width=True):
         st.session_state.messages = []
+        st.session_state.current_session_id = None
         st.rerun()
+    
+    st.markdown("<div class='sidebar-divider'></div>", unsafe_allow_html=True)
+    
+    if st.session_state.chat_sessions:
+        for i, session in enumerate(st.session_state.chat_sessions[-3:]):
+            session_title = session.get("title", f"Chat {i+1}")
+            if st.button(session_title, key=f"chat_{i}", use_container_width=True):
+                st.session_state.current_session_id = session.get("id")
+                st.rerun()
+    else:
+        st.markdown("""
+        <div style="color:#6B7280;font-size:0.9rem;padding:16px 0;">
+            <div style="height:1px;background:#333;margin:15px 0;"></div>
+            <div style="height:1px;background:#333;margin:15px 0;"></div>
+            <div style="height:1px;background:#333;margin:15px 0;"></div>
+        </div>
+        """, unsafe_allow_html=True)
+    
 
 # ---------------------------------------------------------------------
 # Main Chat Interface
 # ---------------------------------------------------------------------
 
-st.title("Transcout AI Assistant")
-st.caption("Ask about the latest tech trends, startups, and tickets.")
+if not st.session_state.messages:
+    st.markdown("""
+    <div class="welcome-container">
+        <div class="rocket-emoji">🚀</div>
+        <div class="welcome-text">How can I help you?</div>
+    </div>
+    """, unsafe_allow_html=True)
+    render_suggestion_buttons(show_heading=False, key_prefix="welcome")
+else:
+    render_suggestion_buttons(show_heading=True)
 
-# Initialize chat history
-if "messages" not in st.session_state:
-    st.session_state.messages = []
-
-# Find last sources to visualize initially
-last_sources = []
-for msg in reversed(st.session_state.messages):
-    if msg.get("sources"):
-        last_sources = msg["sources"]
-        break
-visualize_sidebar(viz_placeholder, last_sources)
-
-# Display chat messages from history on app rerun
 for message in st.session_state.messages:
     with st.chat_message(message["role"]):
         st.markdown(message["content"])
         if "sources" in message and message["sources"]:
             with st.expander("📚 View Retrieved Sources"):
                 for source in message["sources"]:
-                    # Create a nice card for each source
                     tags_html = "".join([f'<span class="tag-badge">{tag}</span>' for tag in source.get('tags', [])])
-                    
-                    # Extract abstract from relationships
                     abstract = "No abstract available."
                     for rel in source.get('relationships', []):
                         if rel.get('node_type') == 'content' and 'text' in rel.get('node_props', {}):
                             abstract = rel['node_props']['text']
                             break
-
                     st.markdown(f"""
                     <div class="source-card">
                         <div class="source-title">{source.get('title', 'Untitled')}</div>
@@ -194,53 +328,52 @@ for message in st.session_state.messages:
                     </div>
                     """, unsafe_allow_html=True)
 
-# Accept user input
-if prompt := st.chat_input("What would you like to know?"):
-    # Add user message to chat history
+prompt = None
+if st.session_state.pending_prompt:
+    prompt = st.session_state.pending_prompt
+    st.session_state.pending_prompt = None
+else:
+    prompt = st.chat_input("Message Transcout AI")
+
+if prompt:
     st.session_state.messages.append({"role": "user", "content": prompt})
     
-    # Display user message in chat message container
+    if not st.session_state.current_session_id:
+        session_id = datetime.now().strftime("%Y%m%d_%H%M%S")
+        st.session_state.current_session_id = session_id
+        st.session_state.chat_sessions.append({
+            "id": session_id,
+            "title": prompt[:30] + "..." if len(prompt) > 30 else prompt,
+            "created_at": datetime.now()
+        })
+    
     with st.chat_message("user"):
         st.markdown(prompt)
 
-    # Display assistant response in chat message container
     with st.chat_message("assistant"):
         message_placeholder = st.empty()
-        full_response = ""
-        
         with st.spinner("Analyzing knowledge graph..."):
             try:
-                # Call the backend
                 response_data = llm_response.generate_response(prompt)
                 answer = response_data["answer"]
                 sources = response_data["sources"]
-                
-                # Simulate stream effect (optional, but nice)
                 message_placeholder.markdown(answer)
                 
-                # Save to history
                 st.session_state.messages.append({
-                    "role": "assistant", 
+                    "role": "assistant",
                     "content": answer,
                     "sources": sources
                 })
                 
-                # Update Visualization Sidebar immediately
-                visualize_sidebar(viz_placeholder, sources)
-                
-                # Display sources immediately for this turn
                 if sources:
                     with st.expander("📚 View Retrieved Sources", expanded=True):
                         for source in sources:
                             tags_html = "".join([f'<span class="tag-badge">{tag}</span>' for tag in source.get('tags', [])])
-                            
-                            # Extract abstract from relationships
                             abstract = "No abstract available."
                             for rel in source.get('relationships', []):
                                 if rel.get('node_type') == 'content' and 'text' in rel.get('node_props', {}):
                                     abstract = rel['node_props']['text']
                                     break
-                            
                             st.markdown(f"""
                             <div class="source-card">
                                 <div class="source-title">{source.get('title', 'Untitled')}</div>
@@ -254,6 +387,5 @@ if prompt := st.chat_input("What would you like to know?"):
                                 <div style="margin-top:8px;">{tags_html}</div>
                             </div>
                             """, unsafe_allow_html=True)
-
             except Exception as e:
                 st.error(f"An error occurred: {e}")
