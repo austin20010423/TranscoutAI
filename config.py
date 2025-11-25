@@ -9,7 +9,7 @@ NEO4J_PASSWORD = "NEO4j PASSWORD"
 # --- OPENAI  AND EMBEDDING MODEL CONFIG ---
 OPEN_MODEL = "gemma3:270m"
 E5_MODEL_NAME = "intfloat/e5-base-v2"
-OPENAI_API_KEY = "OPENAI_API_KEY"
+# OPENAI_API_KEY = "OPENAI_API_KEY"
 # LLM backend selection: 'ollama' (default) or 'openai'.
 # You can override via environment variable LLM_BACKEND or set here.
 LLM_BACKEND = "openai"  # options: 'ollama' or 'openai'
