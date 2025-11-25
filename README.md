@@ -23,6 +23,27 @@ TrendScout AI is a comprehensive system that aggregates market data, stores it i
 -   **Semantic Search**: Uses E5 embeddings to find relevant data based on meaning, not just keywords.
 -   **Knowledge Graph**: Stores structured data (startups, technologies, trends) in Neo4j for rich relationship querying.
 
+## Component Details
+
+### `llm_response.py`
+This module handles the generation of natural language responses using RAG (Retrieval-Augmented Generation).
+-   **Function**: `generate_response(user_query)`
+-   **Process**:
+    1.  **Retrieve**: Calls `retriever.text_query_to_results` to fetch relevant tickets from Neo4j.
+    2.  **Contextualize**: Formats the retrieved JSON data into a context string.
+    3.  **Generate**: Sends the user query and context to OpenAI's GPT-4o with a system prompt designed for a tech knowledge assistant.
+    4.  **Return**: Returns a dictionary with the generated `answer` and the source `sources`.
+
+### `retriever.py`
+This module implements the semantic search and retrieval logic.
+-   **Key Functions**:
+    -   `extract_entities_with_gpt4(user_query)`: Uses GPT-4o-mini to parse the user's natural language query into structured filters (tags, locations, sources) and a search summary.
+    -   `embed_e5_query(text)`: Generates a vector embedding for the search summary using the E5 model.
+    -   `semantic_search_with_tag_filter_in_neo4j(...)`: Executes a hybrid search in Neo4j:
+        -   **Filtered Exact Search (KNN)**: Tries to match specific tags, locations, or sources first.
+        -   **Vector Index (ANN)**: Falls back to pure semantic vector search if no exact matches are found.
+    -   `text_query_to_results(user_query)`: The main entry point that orchestrates the extraction, embedding, and search steps to return ranked results.
+
 ## Quick Start
 
 ### 1. Setup Environment
