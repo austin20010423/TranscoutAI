@@ -97,7 +97,27 @@ huggingface-cli login
 python metadataToNeo4j.py
 ```
 
-### 4. Run the Application
+### 4. Ingesting Pre-aggregated Data
+
+The project includes a `neo4j_full_hierarchy.json` file which contains a rich, pre-aggregated dataset sourced from:
+-   **GitHub Repositories**: Relevant open-source projects.
+-   **YCombinator**: Startup data and trends.
+-   **StartupSavant**: Detailed startup profiles and market intelligence.
+
+To ingest this specific dataset:
+
+1.  Open `metadataToNeo4j.py`.
+2.  Locate the `load_data()` function.
+3.  Uncomment the line:
+    ```python
+    # startupsavant_data = dataOrganizer.data_organizer.data_orginize_startupsavant()
+    ```
+4.  Run the pipeline again:
+    ```bash
+    python metadataToNeo4j.py
+    ```
+
+### 5. Run the Application
 
 Launch the Streamlit chat interface:
 
